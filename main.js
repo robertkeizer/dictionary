@@ -6,8 +6,8 @@ var async		= require( "async" );
 function queryWikipedia( word, cb ){
 	wikipedia.from_api( word, "en", function( markup ){
 
-		if( markup.match( /^\#REDIRECT/ ) ){
-			return cb( null, [ ] );
+		if( !wikipedia.parse( markup ).text ){
+			return cb( null, { } );
 		}
 
 		var _words = { };
@@ -52,27 +52,27 @@ function queryWord( word, cb ){
 
 	}, function( cb ){
 
-		client.search( {
+		client.get( {
 			index: _index, 
 			type: 'word',
-			body: {
-			}
+			id: word
 		}, function( err, response ){
-			if( err ){ return cb( err ); }
 
-			// We've already queried that word.
-			if( response.hits.total > 0 ){
-				return cb( null, response.hits.hits[0]._source );
+			if( response.found ){
+				return cb( null, response._source.words );
 			}
 
 			queryWikipedia( word, function( err, results ){
 
 				if( err ){ return cb( err ); }
 
+				var _obj = { timestamp: new Date( ), words: results }
+
 				client.create( {
 					index: _index,
 					type: 'word',
-					body: results
+					id: word,
+					body: _obj
 				}, function( err, response ){
 					console.log( "Added '" + word + "' with " + Object.keys( results ).length + " words branching" );
 					if( err ){ return cb( err ); }
@@ -107,7 +107,7 @@ function pushIntoQueue( what ){
 function runQueue( ){
 	async.forever( function( cb ){
 
-		async.eachLimit( QUEUE, 1, function( word, cb ){
+		async.eachLimit( QUEUE, 10, function( word, cb ){
 			queryWord( word, function( err, results ){
 				if( err ){ return cb( err ); }
 				if( results ){ pushIntoQueue( Object.keys(results) ); }
@@ -129,7 +129,7 @@ function runQueue( ){
 var client	= new elasticsearch.Client( { host: config.elasticsearch.host } );
 var QUEUE	= [ ];
 
-queryWord( "book", function( err, result ){
+queryWord( "computer", function( err, result ){
 
 	if( err ){
 		console.log( err );
