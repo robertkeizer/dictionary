@@ -4,9 +4,18 @@ var elasticsearch	= require( "elasticsearch" );
 var async		= require( "async" );
 
 function queryWikipedia( word, cb ){
+	console.log( "queryWikipedia; " +word );
 	wikipedia.from_api( word, "en", function( markup ){
 
-		if( !wikipedia.parse( markup ).text ){
+		var _parsed = wikipedia.parse( markup );
+		
+		// Follow redirects
+		if( _parsed.type == "redirect" ){
+			queryWikipedia( _parsed.redirect, cb );
+			return;
+		}
+
+		if( !_parsed.text ){
 			return cb( null, { } );
 		}
 
@@ -66,7 +75,11 @@ function queryWord( word, cb ){
 
 				if( err ){ return cb( err ); }
 
-				var _obj = { timestamp: new Date( ), words: results }
+				var _obj = { timestamp: new Date( ), words: [ ], counts: [ ] };
+				Object.keys( results ).forEach( function( word ){
+					_obj.words.push( word );
+					_obj.counts.push( { word: word, count: results[word] } );
+				} );
 
 				client.create( {
 					index: _index,
@@ -74,13 +87,11 @@ function queryWord( word, cb ){
 					id: word,
 					body: _obj
 				}, function( err, response ){
-					console.log( "Added '" + word + "' with " + Object.keys( results ).length + " words branching" );
 					if( err ){ return cb( err ); }
 					if( !response.created ){ return cb( response ); }
-
 					console.log( "Added '" + word + "' with " + Object.keys( results ).length + " words branching" );
 
-					return cb( null, results );
+					return cb( null, _obj.words );
 				} );
 			} );
 
@@ -110,7 +121,9 @@ function runQueue( ){
 		async.eachLimit( QUEUE, 10, function( word, cb ){
 			queryWord( word, function( err, results ){
 				if( err ){ return cb( err ); }
-				if( results ){ pushIntoQueue( Object.keys(results) ); }
+
+				pushIntoQueue( results );
+
 				return cb( null );
 			} );
 		}, function( err ){
@@ -129,14 +142,14 @@ function runQueue( ){
 var client	= new elasticsearch.Client( { host: config.elasticsearch.host } );
 var QUEUE	= [ ];
 
-queryWord( "computer", function( err, result ){
+queryWord( "coffee", function( err, result ){
 
 	if( err ){
 		console.log( err );
 		return;
 	}
 	
-	pushIntoQueue( Object.keys(result) );
+	pushIntoQueue( result );
 
 	runQueue( );
 } );
