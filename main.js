@@ -142,7 +142,7 @@ function runQueue( ){
 var client	= new elasticsearch.Client( { host: config.elasticsearch.host } );
 var QUEUE	= [ ];
 
-queryWord( "coffee", function( err, result ){
+queryWord( "glasses", function( err, result ){
 
 	if( err ){
 		console.log( err );
